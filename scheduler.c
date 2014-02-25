@@ -8,7 +8,7 @@
 #include "scheduler.h"
 #include "board_ow.h"
 #include "debugpins.h"
-#include "leds.h"
+#include "leds_ow.h"
 
 #define ENABLE_DEBUG (0)
 #include "debug.h"

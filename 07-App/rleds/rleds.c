@@ -1,8 +1,8 @@
 #include "openwsn.h"
-#include "rleds.h"
+#include "rleds_ow.h"
 #include "opencoap.h"
 #include "packetfunctions.h"
-#include "leds.h"
+#include "leds_ow.h"
 #include "openqueue.h"
 
 //=========================== variables =======================================

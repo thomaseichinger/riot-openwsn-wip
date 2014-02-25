@@ -1,12 +1,19 @@
 /**
-\brief TelosB-specific definition of the "uart" bsp module.
+\brief iot-lab_M3 definition of the "uart" bsp module (based on openmoteSTM32 code).
 
-\author Thomas Watteyne <watteyne@eecs.berkeley.edu>, February 2012.
+\author Chang Tengfei <tengfei.chang@gmail.com>,  July 2012.
+\author Alaeddine Weslati <alaeddine.weslati@inria.fr>,  January 2014.
 */
 
-#include "msp430f1611.h"
+#include "stm32f10x_lib.h"
+#include "stdio.h"
+#include "stdint.h"
+#include "string.h"
 #include "uart_ow.h"
-#include "board_ow.h"
+#include "leds_ow.h"
+
+#include "rcc.h"
+#include "nvic.h"
 
 //=========================== defines =========================================
 
@@ -15,80 +22,120 @@
 typedef struct {
    uart_tx_cbt txCb;
    uart_rx_cbt rxCb;
+   uint8_t     startOrend;
+   uint8_t     flagByte;
 } uart_vars_t;
 
-uart_vars_t uart_vars;
+volatile uart_vars_t uart_vars;
 
 //=========================== prototypes ======================================
 
 //=========================== public ==========================================
 
-void uart_init_ow(void) {
-   P3SEL                    |=  0xc0;            // P3.6,7 = UART1TX/RX
-   
-   UCTL1                     =  SWRST;           // hold UART1 module in reset
-   UCTL1                    |=  CHAR;            // 8-bit character
-   
-   /*
-   //   9600 baud, clocked from 32kHz ACLK
-   UTCTL1                   |=  SSEL0;           // clocking from ACLK
-   UBR01                     =  0x03;            // 32768/9600 = 3.41
-   UBR11                     =  0x00;            //
-   UMCTL1                    =  0x4A;            // modulation
-   */
-   
-   // 115200 baud, clocked from 4.8MHz SMCLK
-   UTCTL1                   |=  SSEL1;           // clocking from SMCLK
-   UBR01                     =  41;              // 4.8MHz/115200 - 41.66
-   UBR11                     =  0x00;            //
-   UMCTL1                    =  0x4A;            // modulation
-   
-   
-   ME2                      |=  UTXE1 + URXE1;   // enable UART1 TX/RX
-   UCTL1                    &= ~SWRST;           // clear UART1 reset bit
+void uart_init_ow(void) 
+{
+  // reset local variables
+  memset(&uart_vars,0,sizeof(uart_vars_t));
+  
+  //when this value is 0, we are send the first data
+  uart_vars.startOrend = 0;
+  //flag byte for start byte and end byte
+  uart_vars.flagByte = 0x7E;
+
+  GPIO_InitTypeDef GPIO_InitStructure;
+  USART_InitTypeDef USART_InitStructure;
+
+  /* Enable GPIO clock */
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_AFIO, ENABLE);
+
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE); 
+
+  /* Configure USART Tx as alternate function push-pull */
+  GPIO_InitStructure.GPIO_Mode            = GPIO_Mode_AF_PP;
+  GPIO_InitStructure.GPIO_Pin             = GPIO_Pin_9;
+  GPIO_InitStructure.GPIO_Speed           = GPIO_Speed_50MHz;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+  /* Configure USART Rx as input floating */
+  GPIO_InitStructure.GPIO_Mode            = GPIO_Mode_IN_FLOATING;
+  GPIO_InitStructure.GPIO_Pin             = GPIO_Pin_10;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+  USART_InitStructure.USART_BaudRate              = 115200;
+  USART_InitStructure.USART_WordLength            = USART_WordLength_8b;
+  USART_InitStructure.USART_StopBits              = USART_StopBits_1;
+  USART_InitStructure.USART_Parity                = USART_Parity_No;
+  USART_InitStructure.USART_HardwareFlowControl   = USART_HardwareFlowControl_None;
+  USART_InitStructure.USART_Mode                  = USART_Mode_Rx | USART_Mode_Tx;
+  USART_Init(USART1, &USART_InitStructure);
+
+  USART_Cmd(USART1, ENABLE); // enable USART1
 }
 
-void uart_setCallbacks(uart_tx_cbt txCb, uart_rx_cbt rxCb) {
-   uart_vars.txCb = txCb;
-   uart_vars.rxCb = rxCb;
+void uart_setCallbacks(uart_tx_cbt txCb, uart_rx_cbt rxCb) 
+{
+  uart_vars.txCb = txCb;
+  uart_vars.rxCb = rxCb;
+  
+  //enable nvic uart.
+  NVIC_uart();
 }
 
-void    uart_enableInterrupts(void){
-  IE2 |=  (URXIE1 | UTXIE1);  
+void uart_enableInterrupts(void)
+{
+  USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
 }
 
-void    uart_disableInterrupts(void){
-  IE2 &= ~(URXIE1 | UTXIE1);
+void uart_disableInterrupts(void)
+{
+  USART_ITConfig(USART1, USART_IT_TXE, DISABLE);
+  USART_ITConfig(USART1, USART_IT_RXNE, DISABLE);
 }
 
-void    uart_clearRxInterrupts(void){
-  IFG2   &= ~URXIFG1;
+void uart_clearRxInterrupts(void)
+{
+  USART_ClearFlag(USART1, USART_FLAG_RXNE);
 }
 
-void    uart_clearTxInterrupts(void){
-  IFG2   &= ~UTXIFG1;
+void uart_clearTxInterrupts(void)
+{
+  USART_ClearFlag(USART1, USART_FLAG_TXE);
 }
 
-void    uart_writeByte(uint8_t byteToWrite){
-  U1TXBUF = byteToWrite;
+void uart_writeByte(uint8_t byteToWrite)
+{ 
+  USART_SendData(USART1, byteToWrite);
+  while(USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
+
+  //start or end byte?
+  if(byteToWrite == uart_vars.flagByte) {
+    uart_vars.startOrend = (uart_vars.startOrend == 0)?1:0;
+    //start byte
+    if(uart_vars.startOrend == 1) {
+      USART_ITConfig(USART1, USART_IT_TXE, ENABLE);
+    } else {
+      USART_ITConfig(USART1, USART_IT_TXE, DISABLE);
+    }
+  }
 }
 
-uint8_t uart_readByte_ow(void){
-  return U1RXBUF;
+uint8_t uart_readByte(void)
+{
+  uint16_t temp;
+  temp = USART_ReceiveData(USART1);
+  return (uint8_t)temp;
 }
-
-//=========================== private =========================================
 
 //=========================== interrupt handlers ==============================
 
-kick_scheduler_t uart_tx_isr(void) {
-   uart_clearTxInterrupts(); // TODO: do not clear, but disable when done
-   uart_vars.txCb();
-   return DO_NOT_KICK_SCHEDULER;
+kick_scheduler_t uart_tx_isr(void) 
+{
+  uart_vars.txCb();
+  return DO_NOT_KICK_SCHEDULER;
 }
 
-kick_scheduler_t uart_rx_isr(void) {
-   uart_clearRxInterrupts(); // TODO: do not clear, but disable when done
-   uart_vars.rxCb();
-   return DO_NOT_KICK_SCHEDULER;
+kick_scheduler_t uart_rx_isr(void) 
+{
+  uart_vars.rxCb();
+  return DO_NOT_KICK_SCHEDULER;
 }

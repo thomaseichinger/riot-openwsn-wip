@@ -22,7 +22,7 @@
 
 //=========================== prototypes ======================================
 
-void    leds_init(void);
+void    leds_init_ow(void);
 
 void    leds_error_on(void);
 void    leds_error_off(void);

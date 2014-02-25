@@ -15,11 +15,13 @@
 #include "tcpinject.h"
 #include "udpinject.h"
 #include "openbridge.h"
-#include "leds.h"
+#include "leds_ow.h"
 #include "schedule.h"
 #include "uart_ow.h"
 #include "opentimers.h"
 #include "openhdlc.h"
+
+#include <stdio.h>
 
 //=========================== variables =======================================
 
@@ -205,7 +207,7 @@ owerror_t openserial_printCritical(uint8_t calling_component, uint8_t error_code
 }
 
 uint8_t openserial_getNumDataBytes(void) {
-    uint8_t inputBufFill;
+    uint8_t inputBufFill=0;
  //   INTERRUPT_DECLARATION();
  //   
  //   DISABLE_INTERRUPTS();
@@ -216,7 +218,7 @@ uint8_t openserial_getNumDataBytes(void) {
 }
 
 uint8_t openserial_getInputBuffer(uint8_t* bufferToWrite, uint8_t maxNumBytes) {
-   uint8_t numBytesWritten;
+   uint8_t numBytesWritten=0;
    // uint8_t inputBufFill;
 //    INTERRUPT_DECLARATION();
 //    

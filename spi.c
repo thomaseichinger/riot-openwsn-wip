@@ -1,15 +1,19 @@
 /**
-\brief TelosB-specific definition of the "spi" bsp module.
+\brief iot-lab_M3 definition of the "spi" bsp module (based on openmoteSTM32 code).
 
 \author Thomas Watteyne <watteyne@eecs.berkeley.edu>, February 2012.
+\author Chang Tengfei <tengfei.chang@gmail.com>,  July 2012.
+\author Alaeddine Weslati <alaeddine.weslati@inria.fr>, January 2014.
 */
-
-#include "msp430f1611.h"
+#include "stm32f10x_lib.h"
+#include "stdio.h"
+#include "stdint.h"
+#include "string.h"
 #include "spi.h"
-#include "leds.h"
+#include "leds_ow.h"
 
-#define ENABLE_DEBUG (0)
-#include "debug.h"
+#include "rcc.h"
+#include "nvic.h"
 
 //=========================== defines =========================================
 
@@ -29,81 +33,90 @@ typedef struct {
    uint8_t         busy;
 #ifdef SPI_IN_INTERRUPT_MODE
    // callback when module done
-   spi_cbt         spi_cb;
+   spi_cbt         callback;
 #endif
 } spi_vars_t;
 
-spi_vars_t spi_vars;
+volatile spi_vars_t spi_vars;
 
 //=========================== prototypes ======================================
+inline static void RESET_CLR(void) { GPIOC->BRR = 1<<1; }
+inline static void RESET_SET(void) { GPIOC->BSRR = 1<<1; }
+inline static void CSn_SET(void) { GPIOA->BSRR = 1<<4; }
+inline static void CSn_CLR(void) { GPIOA->BRR = 1<<4; }
+inline static void SLEEP_CLR(void) { GPIOA->BRR = 1<<2; }
 
 //=========================== public ==========================================
 
-void spi_init(void) {
-   // clear variables
-   memset(&spi_vars,0,sizeof(spi_vars_t));
+void spi_init() {
+ // clear variables
+  memset(&spi_vars,0,sizeof(spi_vars_t));
+ 
+  SPI_InitTypeDef  SPI_InitStructure;
+
+  //enable SPI1, GPIOA, GPIOB and GPIOC, Clock
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
    
-   // hold USART state machine in reset mode during configuration
-   U0CTL      =  SWRST;                          // [b0] SWRST=1: Enabled. USART logic held in reset state
-   
-   // configure SPI-related pins
-   P3SEL     |=  0x02;                           // P3.1 in SIMO mode
-   P3DIR     |=  0x02;                           // P3.1 as output
-   P3SEL     |=  0x04;                           // P3.2 in SOMI mode
-   P3DIR     |=  0x04;                           // P3.2 as output
-   P3SEL     |=  0x08;                           // P3.3 in SCL mode
-   P3DIR     |=  0x08;                           // P3.3 as output 
-   P4OUT     |=  0x04;                           // P4.2 radio CS, hold high
-   P4DIR     |=  0x04;                           // P4.2 radio CS, output
-   
-   // initialize USART registers
-   U0CTL     |=  CHAR | SYNC | MM ;              // [b7]          0: unused
-                                                 // [b6]          0: unused
-                                                 // [b5]      I2C=0: SPI mode (not I2C)   
-                                                 // [b4]     CHAR=1: 8-bit data
-                                                 // [b3]   LISTEN=0: Disabled
-                                                 // [b2]     SYNC=1: SPI mode (not UART)
-                                                 // [b1]       MM=1: USART is master
-                                                 // [b0]    SWRST=x: don't change
-   
-   U0TCTL     =  CKPH | SSEL1 | STC | TXEPT;     // [b7]     CKPH=1: UCLK is delayed by one half cycle
-                                                 // [b6]     CKPL=0: normal clock polarity
-                                                 // [b5]    SSEL1=1:
-                                                 // [b4]    SSEL0=0: SMCLK
-                                                 // [b3]          0: unused
-                                                 // [b2]          0: unused
-                                                 // [b1]      STC=1: 3-pin SPI mode
-                                                 // [b0]    TXEPT=1: UxTXBUF and TX shift register are empty                                                 
-   
-   U0BR1      =  0x00;
-   U0BR0      =  0x02;                           // U0BR = [U0BR1<<8|U0BR0] = 2
-   U0MCTL     =  0x00;                           // no modulation needed in SPI mode
-      
-   // enable USART module
-   ME1       |=  UTXE0 | URXE0;                  // [b7]    UTXE0=1: USART0 transmit enabled
-                                                 // [b6]    URXE0=1: USART0 receive enabled
-                                                 // [b5]          x: don't touch!
-                                                 // [b4]          x: don't touch!
-                                                 // [b3]          x: don't touch!
-                                                 // [b2]          x: don't touch!
-                                                 // [b1]          x: don't touch!
-                                                 // [b0]          x: don't touch!
-   
-   // clear USART state machine from reset, starting operation
-   U0CTL     &= ~SWRST;
-   
-   // enable interrupts via the IEx SFRs
+  //Configure SPI-related pins: PA.5 as SCLK pin ,PA.6 as MISO pin, PA.7 as MOSI pin, PA.4 as /SEL pin
+  GPIO_InitTypeDef GPIO_InitStructure;
+  GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_5 | GPIO_Pin_7;
+  GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+  GPIO_InitStructure.GPIO_Pin    = GPIO_Pin_6;
+  GPIO_InitStructure.GPIO_Mode   = GPIO_Mode_IN_FLOATING;
+  GPIO_InitStructure.GPIO_Speed  = GPIO_Speed_50MHz;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+  GPIO_InitStructure.GPIO_Pin     = GPIO_Pin_4 | GPIO_Pin_2;
+  GPIO_InitStructure.GPIO_Mode    = GPIO_Mode_Out_PP;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+  
+  GPIO_InitStructure.GPIO_Pin     = GPIO_Pin_1;
+  GPIO_InitStructure.GPIO_Mode    = GPIO_Mode_Out_PP;
+  GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+  // force reset
+  RESET_CLR();
+  CSn_SET();
+  SLEEP_CLR();
+
+  for (uint16_t j=0;j<0xFFFF;j++); //small wait
+
+  RESET_SET();
+  
+  //Configure SPI1
+  SPI_InitStructure.SPI_Direction         = SPI_Direction_2Lines_FullDuplex; //Full-duplex synchronous transfers on two lines
+  SPI_InitStructure.SPI_Mode              = SPI_Mode_Master;//Master Mode
+  SPI_InitStructure.SPI_DataSize          = SPI_DataSize_8b; //8-bit transfer frame format
+  SPI_InitStructure.SPI_CPOL              = SPI_CPOL_Low;  //the SCK pin has a low-level idle state 
+  SPI_InitStructure.SPI_CPHA              = SPI_CPHA_1Edge; //the first rising edge on the SCK pin is the MSBit capture strobe,
+  SPI_InitStructure.SPI_NSS               = SPI_NSS_Soft;//Software NSS mode
+  SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_16;//BaudRate Prescaler = 8 
+  SPI_InitStructure.SPI_FirstBit          = SPI_FirstBit_MSB;//data order with MSB-first
+  SPI_InitStructure.SPI_CRCPolynomial     = 7;//CRC Polynomial = 7
+  SPI_Init(SPI1, &SPI_InitStructure);
+
+  //enable SPI1
+  SPI_Cmd(SPI1, ENABLE);
+  
 #ifdef SPI_IN_INTERRUPT_MODE
-   IE1       |=  URXIE0;                         // we only enable the SPI RX interrupt
-                                                 // since TX and RX happen concurrently,
-                                                 // i.e. an RX completion necessarily
-                                                 // implies a TX completion.
+  //Configure NVIC: Preemption Priority = 1 and Sub Priority = 1
+  NVIC_InitTypeDef NVIC_InitStructure;
+  NVIC_InitStructure.NVIC_IRQChannel	                  = SPI1_IRQChannel;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority	= 1;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority	        = 1;
+  NVIC_InitStructure.NVIC_IRQChannelCmd	                = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
 #endif
 }
 
 #ifdef SPI_IN_INTERRUPT_MODE
-void spi_setCb(spi_cbt cb) {
-   spi_vars.spi_cb = cb;
+void spi_setCallback(spi_cbt cb) {
+   spi_vars.callback = cb;
 }
 #endif
 
@@ -117,7 +130,7 @@ void spi_txrx(uint8_t*     bufTx,
 
 #ifdef SPI_IN_INTERRUPT_MODE
    // disable interrupts
-   __disable_interrupt();
+   NVIC_RESETPRIMASK();
 #endif
    
    // register spi frame to send
@@ -133,48 +146,45 @@ void spi_txrx(uint8_t*     bufTx,
    // SPI is now busy
    spi_vars.busy             =  1;
    
+   
    // lower CS signal to have slave listening
    if (spi_vars.isFirst==SPI_FIRST) {
-      P4OUT                 &= ~0x04;
+   GPIO_ResetBits(GPIOA, GPIO_Pin_4);
    }
-
+   
 #ifdef SPI_IN_INTERRUPT_MODE
    // implementation 1. use a callback function when transaction finishes
    
    // write first byte to TX buffer
-   U0TXBUF                   = *spi_vars.pNextTxByte;
+   SPI_I2S_SendData(SPI1,*spi_vars.pNextTxByte);
    
    // re-enable interrupts
-   __enable_interrupt();
+   NVIC_SETPRIMASK();
 #else
    // implementation 2. busy wait for each byte to be sent
-
    // send all bytes
    while (spi_vars.txBytesLeft>0) {
       // write next byte to TX buffer
-      U0TXBUF                = *spi_vars.pNextTxByte;
+   SPI_I2S_SendData(SPI1,*spi_vars.pNextTxByte);
+
       // busy wait on the interrupt flag
-      uint32_t c = 0;
-      while ((IFG1 & URXIFG0)==0) 
-          if (c++ == 1000) {
-              DEBUG("spi_txrx timeout"); 
-              break;
-          }
+      while (SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) == RESET);
+      
       // clear the interrupt flag
-      IFG1                  &= ~URXIFG0;
+      SPI_I2S_ClearFlag(SPI1, SPI_I2S_FLAG_RXNE);
       // save the byte just received in the RX buffer
       switch (spi_vars.returnType) {
          case SPI_FIRSTBYTE:
             if (spi_vars.numTxedBytes==0) {
-               *spi_vars.pNextRxByte   = U0RXBUF;
+               *spi_vars.pNextRxByte   = SPI_I2S_ReceiveData(SPI1);
             }
             break;
          case SPI_BUFFER:
-            *spi_vars.pNextRxByte      = U0RXBUF;
+            *spi_vars.pNextRxByte      = SPI_I2S_ReceiveData(SPI1);
             spi_vars.pNextRxByte++;
             break;
          case SPI_LASTBYTE:
-            *spi_vars.pNextRxByte      = U0RXBUF;
+            *spi_vars.pNextRxByte      = SPI_I2S_ReceiveData(SPI1);
             break;
       }
       // one byte less to go
@@ -182,10 +192,10 @@ void spi_txrx(uint8_t*     bufTx,
       spi_vars.numTxedBytes++;
       spi_vars.txBytesLeft--;
    }
-
+   
    // put CS signal high to signal end of transmission to slave
    if (spi_vars.isLast==SPI_LAST) {
-      P4OUT                 |=  0x04;
+   GPIO_SetBits(GPIOA, GPIO_Pin_4);
    }
    
    // SPI is not busy anymore
@@ -197,21 +207,21 @@ void spi_txrx(uint8_t*     bufTx,
 
 //=========================== interrupt handlers ==============================
 
-kick_scheduler_t spi_isr(void) {
-#ifdef SPI_IN_INTERRUPT_MODE   
+kick_scheduler_t spi_isr() {
+#ifdef SPI_IN_INTERRUPT_MODE
    // save the byte just received in the RX buffer
    switch (spi_vars.returnType) {
       case SPI_FIRSTBYTE:
          if (spi_vars.numTxedBytes==0) {
-            *spi_vars.pNextRxByte   = U0RXBUF;
+            *spi_vars.pNextRxByte = SPI_I2S_ReceiveData(SPI1);
          }
          break;
       case SPI_BUFFER:
-         *spi_vars.pNextRxByte      = U0RXBUF;
+         *spi_vars.pNextRxByte    = SPI_I2S_ReceiveData(SPI1);
          spi_vars.pNextRxByte++;
          break;
       case SPI_LASTBYTE:
-         *spi_vars.pNextRxByte      = U0RXBUF;
+         *spi_vars.pNextRxByte    = SPI_I2S_ReceiveData(SPI1);
          break;
    }
    
@@ -222,33 +232,24 @@ kick_scheduler_t spi_isr(void) {
    
    if (spi_vars.txBytesLeft>0) {
       // write next byte to TX buffer
-      U0TXBUF                = *spi_vars.pNextTxByte;
+   SPI_SendData(SPI1,*spi_vars.pNextTxByte);
    } else {
       // put CS signal high to signal end of transmission to slave
       if (spi_vars.isLast==SPI_LAST) {
-         P4OUT                 |=  0x04;
+   GPIO_SetBits(GPIOA, GPIO_Pin_4);
       }
       // SPI is not busy anymore
-      spi_vars.busy             =  0;
+      spi_vars.busy          =  0;
       
       // SPI is done!
-      if (spi_vars.spi_cb!=NULL) {
+      if (spi_vars.callback!=NULL) {
          // call the callback
-         spi_vars.spi_cb();
+         spi_vars.callback();
          // kick the OS
-         return KICK_SCHEDULER;
+         return 1;
       }
    }
-   return DO_NOT_KICK_SCHEDULER;
 #else
-   // this should never happpen!
-   
-   // we can not print from within the BSP. Instead:
-   // blink the error LED
-   leds_error_blink();
-   // reset the board
-   board_reset();
-   
-   return DO_NOT_KICK_SCHEDULER; // we will not get here, statement to please compiler
+   while(1);// this should never happen
 #endif
 }

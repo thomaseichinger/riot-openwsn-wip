@@ -52,7 +52,7 @@
 //#include "udplatency.h"
 //#include "udpstorm.h"
 //-- CoAP
-//#include "rleds.h"
+//#include "rleds_ow.h"
 //#include "rt.h"
 //#include "rex.h"
 //#include "rheli.h"
@@ -144,7 +144,7 @@ void openwsn_init(void) {
    //udplatency_init();
    //udpstorm_init();
    //-- CoAP
-   //rleds_init();
+   //rleds_init_ow();
    //rt_init();
    //rex_init();
    //rheli_init();

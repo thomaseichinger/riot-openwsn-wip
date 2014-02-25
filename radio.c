@@ -1,54 +1,68 @@
 /**
-\brief CC2420-specific definition of the "radio" bsp module.
+\brief AT86RF231-specific definition of the "radio" bsp module.
 
 \author Thomas Watteyne <watteyne@eecs.berkeley.edu>, February 2012.
 */
 
-#include "board.h"
+
+#include "board_ow.h"
 #include "radio.h"
-#include "cc2420.h"
+#include "at86rf231.h"
 #include "spi.h"
+#include "radiotimer.h"
 #include "debugpins.h"
-#include "leds.h"
+#include "leds_ow.h"
 
 //=========================== defines =========================================
 
 //=========================== variables =======================================
 
 typedef struct {
-   cc2420_status_t radioStatusByte;
-   radio_state_t   state;
+   radiotimer_capture_cbt    startFrame_cb;
+   radiotimer_capture_cbt    endFrame_cb;
+   radio_state_t             state; 
 } radio_vars_t;
 
 radio_vars_t radio_vars;
 
 //=========================== prototypes ======================================
 
-void radio_spiStrobe     (uint8_t strobe, cc2420_status_t* statusRead);
-void radio_spiWriteReg   (uint8_t reg,    cc2420_status_t* statusRead, uint16_t regValueToWrite);
-void radio_spiReadReg    (uint8_t reg,    cc2420_status_t* statusRead, uint8_t* regValueRead);
-void radio_spiWriteTxFifo(                cc2420_status_t* statusRead, uint8_t* bufToWrite, uint8_t  lenToWrite);
-void radio_spiReadRxFifo (                cc2420_status_t* statusRead, uint8_t* bufRead,    uint8_t* lenRead, uint8_t maxBufLen);
+void    radio_spiWriteReg(uint8_t reg_addr, uint8_t reg_setting);
+uint8_t radio_spiReadReg(uint8_t reg_addr);
+void    radio_spiWriteTxFifo(uint8_t* bufToWrite, uint8_t lenToWrite);
+void    radio_spiReadRxFifo(uint8_t* pBufRead,
+                            uint8_t* pLenRead,
+                            uint8_t  maxBufLen,
+                            uint8_t* pLqi);
+uint8_t radio_spiReadRadioInfo(void);
 
 //=========================== public ==========================================
 
 //===== admin
 
-void radio_init(void) {
+void radio_init() {
+
    // clear variables
    memset(&radio_vars,0,sizeof(radio_vars_t));
    
    // change state
    radio_vars.state          = RADIOSTATE_STOPPED;
-   
-   // reset radio
-   radio_reset();
+  
+   // configure the radio
+   radio_spiWriteReg(RG_TRX_STATE, CMD_FORCE_TRX_OFF);    // turn radio off
+  
+   radio_spiWriteReg(RG_IRQ_MASK,
+                     (AT_IRQ_RX_START| AT_IRQ_TRX_END));  // tell radio to fire interrupt on TRX_END and RX_START
+   radio_spiReadReg(RG_IRQ_STATUS);                       // deassert the interrupt pin in case is high
+   radio_spiWriteReg(RG_ANT_DIV, RADIO_CHIP_ANTENNA);     // use chip antenna
+#define RG_TRX_CTRL_1 0x04
+   radio_spiWriteReg(RG_TRX_CTRL_1, 0x20);                // have the radio calculate CRC
+   //busy wait until radio status is TRX_OFF
+  
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF);
    
    // change state
    radio_vars.state          = RADIOSTATE_RFOFF;
-   
-   // start radiotimer with dummy setting to activate SFD pin interrupt
-   radiotimer_start(0xffff);
 }
 
 void radio_setOverflowCb(radiotimer_compare_cbt cb) {
@@ -60,133 +74,62 @@ void radio_setCompareCb(radiotimer_compare_cbt cb) {
 }
 
 void radio_setStartFrameCb(radiotimer_capture_cbt cb) {
-   radiotimer_setStartFrameCb(cb);
+   radio_vars.startFrame_cb  = cb;
 }
 
 void radio_setEndFrameCb(radiotimer_capture_cbt cb) {
-   radiotimer_setEndFrameCb(cb);
+   radio_vars.endFrame_cb    = cb;
 }
 
 //===== reset
 
-void radio_reset(void) {
-   volatile uint16_t     delay;
-   cc2420_MDMCTRL0_reg_t cc2420_MDMCTRL0_reg;
-   cc2420_TXCTRL_reg_t   cc2420_TXCTRL_reg;
-   cc2420_RXCTRL1_reg_t  cc2420_RXCTRL1_reg;
-   
-   // set radio VREG pin high
-   PORT_PIN_RADIO_VREG_HIGH();
-   for (delay=0xffff;delay>0;delay--);           // max. VREG start-up time is 0.6ms
-   
-   // set radio RESET pin low
+void radio_reset() {
    PORT_PIN_RADIO_RESET_LOW();
-   for (delay=0xffff;delay>0;delay--);
-   
-   // set radio RESET pin high
-   PORT_PIN_RADIO_RESET_HIGH();
-   for (delay=0xffff;delay>0;delay--);
-   
-   // disable address recognition
-   cc2420_MDMCTRL0_reg.PREAMBLE_LENGTH      = 2; // 3 leading zero's (IEEE802.15.4 compliant)
-   cc2420_MDMCTRL0_reg.AUTOACK              = 0;
-   cc2420_MDMCTRL0_reg.AUTOCRC              = 1;
-   cc2420_MDMCTRL0_reg.CCA_MODE             = 3;
-   cc2420_MDMCTRL0_reg.CCA_HYST             = 2;
-   cc2420_MDMCTRL0_reg.ADR_DECODE           = 0; // turn OFF address recognition
-   cc2420_MDMCTRL0_reg.PAN_COORDINATOR      = 0;
-   cc2420_MDMCTRL0_reg.RESERVED_FRAME_MODE  = 1; // accept all frame types
-   cc2420_MDMCTRL0_reg.reserved_w0          = 0;
-   radio_spiWriteReg(CC2420_MDMCTRL0_ADDR,
-                     &radio_vars.radioStatusByte,
-                     *(uint16_t*)&cc2420_MDMCTRL0_reg);
-   
-   // speed up time to TX
-   cc2420_TXCTRL_reg.PA_LEVEL               = 31;// max. TX power (~0dBm)
-   cc2420_TXCTRL_reg.reserved_w1            = 1;
-   cc2420_TXCTRL_reg.PA_CURRENT             = 3;
-   cc2420_TXCTRL_reg.TXMIX_CURRENT          = 0;
-   cc2420_TXCTRL_reg.TXMIX_CAP_ARRAY        = 0;
-   cc2420_TXCTRL_reg.TX_TURNAROUND          = 0; // faster STXON->SFD timing (128us)
-   cc2420_TXCTRL_reg.TXMIXBUF_CUR           = 2;
-   radio_spiWriteReg(CC2420_TXCTRL_ADDR,
-                     &radio_vars.radioStatusByte,
-                     *(uint16_t*)&cc2420_TXCTRL_reg);
-   
-   // apply correction recommended in datasheet
-   cc2420_RXCTRL1_reg.RXMIX_CURRENT         = 2;
-   cc2420_RXCTRL1_reg.RXMIX_VCM             = 1;
-   cc2420_RXCTRL1_reg.RXMIX_TAIL            = 1;
-   cc2420_RXCTRL1_reg.LNA_CAP_ARRAY         = 1;
-   cc2420_RXCTRL1_reg.MED_HGM               = 0;
-   cc2420_RXCTRL1_reg.HIGH_HGM              = 1;
-   cc2420_RXCTRL1_reg.MED_LOWGAIN           = 0;
-   cc2420_RXCTRL1_reg.LOW_LOWGAIN           = 1;
-   cc2420_RXCTRL1_reg.RXBPF_MIDCUR          = 0;
-   cc2420_RXCTRL1_reg.RXBPF_LOCUR           = 1; // use this setting as per datasheet
-   cc2420_RXCTRL1_reg.reserved_w0           = 0;
-   radio_spiWriteReg(CC2420_RXCTRL1_ADDR,
-                     &radio_vars.radioStatusByte,
-                     *(uint16_t*)&cc2420_RXCTRL1_reg);
 }
 
 //===== timer
 
-void radio_startTimer(uint16_t period) {
+void radio_startTimer(PORT_TIMER_WIDTH period) {
    radiotimer_start(period);
 }
 
-uint16_t radio_getTimerValue(void) {
+PORT_TIMER_WIDTH radio_getTimerValue() {
    return radiotimer_getValue();
 }
 
-void radio_setTimerPeriod(uint16_t period) {
+void radio_setTimerPeriod(PORT_TIMER_WIDTH period) {
    radiotimer_setPeriod(period);
 }
 
-uint16_t radio_getTimerPeriod(void) {
+PORT_TIMER_WIDTH radio_getTimerPeriod() {
    return radiotimer_getPeriod();
 }
 
 //===== RF admin
 
 void radio_setFrequency(uint8_t frequency) {
-   cc2420_FSCTRL_reg_t cc2420_FSCTRL_reg;
-   
    // change state
    radio_vars.state = RADIOSTATE_SETTING_FREQUENCY;
    
-   cc2420_FSCTRL_reg.FREQ         = frequency-11;
-   cc2420_FSCTRL_reg.FREQ        *= 5;
-   cc2420_FSCTRL_reg.FREQ        += 357;
-   cc2420_FSCTRL_reg.LOCK_STATUS  = 0;
-   cc2420_FSCTRL_reg.LOCK_LENGTH  = 0;
-   cc2420_FSCTRL_reg.CAL_RUNNING  = 0;
-   cc2420_FSCTRL_reg.CAL_DONE     = 0;
-   cc2420_FSCTRL_reg.LOCK_THR     = 1;
-   
-   radio_spiWriteReg(CC2420_FSCTRL_ADDR,
-                     &radio_vars.radioStatusByte,
-                     *(uint16_t*)&cc2420_FSCTRL_reg);
+   // configure the radio to the right frequecy
+   radio_spiWriteReg(RG_PHY_CC_CCA,0x20+frequency);
    
    // change state
    radio_vars.state = RADIOSTATE_FREQUENCY_SET;
 }
 
-void radio_rfOn(void) {   
-   radio_spiStrobe(CC2420_SXOSCON, &radio_vars.radioStatusByte);
-   while (radio_vars.radioStatusByte.xosc16m_stable==0) {
-      radio_spiStrobe(CC2420_SNOP, &radio_vars.radioStatusByte);
-   }
+void radio_rfOn() {
+   PORT_PIN_RADIO_RESET_LOW();
 }
 
-void radio_rfOff(void) {
-   
+void radio_rfOff() {
    // change state
    radio_vars.state = RADIOSTATE_TURNING_OFF;
-   
-   radio_spiStrobe(CC2420_SRFOFF, &radio_vars.radioStatusByte);
-   // poipoipoi wait until off
+   radio_spiReadReg(RG_TRX_STATUS);
+   // turn radio off
+   radio_spiWriteReg(RG_TRX_STATE, CMD_FORCE_TRX_OFF);
+   //radio_spiWriteReg(RG_TRX_STATE, CMD_TRX_OFF);
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF); // busy wait until done
    
    // wiggle debug pin
    debugpins_radio_clr();
@@ -202,14 +145,14 @@ void radio_loadPacket(uint8_t* packet, uint8_t len) {
    // change state
    radio_vars.state = RADIOSTATE_LOADING_PACKET;
    
-   radio_spiStrobe(CC2420_SFLUSHTX, &radio_vars.radioStatusByte);
-   radio_spiWriteTxFifo(&radio_vars.radioStatusByte, packet, len);
+   // load packet in TXFIFO
+   radio_spiWriteTxFifo(packet,len);
    
    // change state
    radio_vars.state = RADIOSTATE_PACKET_LOADED;
 }
 
-void radio_txEnable(void) {
+void radio_txEnable() {
    // change state
    radio_vars.state = RADIOSTATE_ENABLING_TX;
    
@@ -217,104 +160,155 @@ void radio_txEnable(void) {
    debugpins_radio_set();
    leds_radio_on();
    
-   // I don't fully understand how the CC2420_STXCA the can be used here.
+   // turn on radio's PLL
+   radio_spiWriteReg(RG_TRX_STATE, CMD_PLL_ON);
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != PLL_ON); // busy wait until done
    
    // change state
    radio_vars.state = RADIOSTATE_TX_ENABLED;
 }
 
-void radio_txNow(void) {
+void radio_txNow() {
+   PORT_TIMER_WIDTH val;
    // change state
    radio_vars.state = RADIOSTATE_TRANSMITTING;
    
-   radio_spiStrobe(CC2420_STXON, &radio_vars.radioStatusByte);
+   // send packet by pulsing the SLP_TR_CNTL pin
+   PORT_PIN_RADIO_SLP_TR_CNTL_HIGH();
+   PORT_PIN_RADIO_SLP_TR_CNTL_LOW();
+   
+   // The AT86RF231 does not generate an interrupt when the radio transmits the
+   // SFD, which messes up the MAC state machine. The danger is that, if we leave
+   // this funtion like this, any radio watchdog timer will expire.
+   // Instead, we cheat an mimick a start of frame event by calling
+   // ieee154e_startOfFrame from here. This also means that software can never catch
+   // a radio glitch by which #radio_txEnable would not be followed by a packet being
+   // transmitted (I've never seen that).
+   if (radio_vars.startFrame_cb!=NULL) {
+      // call the callback
+      val=radiotimer_getCapturedTime();
+      radio_vars.startFrame_cb(val);
+   }
 }
 
 //===== RX
 
-void radio_rxEnable(void) {
+void radio_rxEnable() {
    // change state
    radio_vars.state = RADIOSTATE_ENABLING_RX;
    
    // put radio in reception mode
-   radio_spiStrobe(CC2420_SRXON, &radio_vars.radioStatusByte);
-   radio_spiStrobe(CC2420_SFLUSHRX, &radio_vars.radioStatusByte);
+   radio_spiWriteReg(RG_TRX_STATE, CMD_RX_ON);
    
    // wiggle debug pin
    debugpins_radio_set();
    leds_radio_on();
    
    // busy wait until radio really listening
-   while (radio_vars.radioStatusByte.rssi_valid==0) {
-      radio_spiStrobe(CC2420_SNOP, &radio_vars.radioStatusByte);
-   }
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != RX_ON);
    
    // change state
    radio_vars.state = RADIOSTATE_LISTENING;
 }
 
-void radio_rxNow(void) {
-   // nothing to do, the radio is already listening.
+void radio_rxNow() {
+   // nothing to do
 }
 
-void radio_getReceivedFrame(uint8_t* bufRead,
-                            uint8_t* lenRead,
+void radio_getReceivedFrame(uint8_t* pBufRead,
+                            uint8_t* pLenRead,
                             uint8_t  maxBufLen,
-                             int8_t* rssi,
-                            uint8_t* lqi,
-                            uint8_t* crc) {
-   // read the received packet from the RXFIFO
-   radio_spiReadRxFifo(&radio_vars.radioStatusByte, bufRead, lenRead, maxBufLen);
+                             int8_t* pRssi,
+                            uint8_t* pLqi,
+                            uint8_t* pCrc) {
+   uint8_t temp_reg_value;
    
-   // On reception, when MODEMCTRL0.AUTOCRC is set, the CC2420 replaces the
-   // received CRC by:
-   // - [1B] the rssi, a signed value. The actual value in dBm is that - 45.
-   // - [1B] whether CRC checked (bit 7) and LQI (bit 6-0)
-   *rssi  =  *(bufRead+*lenRead-2);
-   *rssi -= 45;
-   *crc   = ((*(bufRead+*lenRead-1))&0x80)>>7;
-   *lqi   =  (*(bufRead+*lenRead-1))&0x7f;
+   //===== crc
+   temp_reg_value  = radio_spiReadReg(RG_PHY_RSSI);
+   *pCrc           = (temp_reg_value & 0x80)>>7;  // msb is whether packet passed CRC
+   
+   //===== rssi
+   // as per section 8.4.3 of the AT86RF231, the RSSI is calculate as:
+   // -91 + ED [dBm]
+   temp_reg_value  = radio_spiReadReg(RG_PHY_ED_LEVEL);
+   *pRssi          = -91 + temp_reg_value;
+   
+   //===== packet
+   radio_spiReadRxFifo(pBufRead,
+                       pLenRead,
+                       maxBufLen,
+                       pLqi);
 }
 
 //=========================== private =========================================
 
-void radio_spiStrobe(uint8_t strobe, cc2420_status_t* statusRead) {
-   uint8_t  spi_tx_buffer[1];
-   
-   spi_tx_buffer[0]     = (CC2420_FLAG_WRITE | CC2420_FLAG_REG | strobe);
-   
-   spi_txrx(spi_tx_buffer,
-            sizeof(spi_tx_buffer),
-            SPI_FIRSTBYTE,
-            (uint8_t*)statusRead,
-            1,
-            SPI_FIRST,
-            SPI_LAST);
-}
 
-void radio_spiWriteReg(uint8_t reg, cc2420_status_t* statusRead, uint16_t regValueToWrite) {
-   uint8_t              spi_tx_buffer[3];
-   
-   spi_tx_buffer[0]     = (CC2420_FLAG_WRITE | CC2420_FLAG_REG | reg);
-   spi_tx_buffer[1]     = regValueToWrite/256;
-   spi_tx_buffer[2]     = regValueToWrite%256;
-   
-   spi_txrx(spi_tx_buffer,
-            sizeof(spi_tx_buffer),
-            SPI_FIRSTBYTE,
-            (uint8_t*)statusRead,
-            1,
-            SPI_FIRST,
-            SPI_LAST);
-}
-
-void radio_spiReadReg(uint8_t reg, cc2420_status_t* statusRead, uint8_t* regValueRead) {
+uint8_t radio_spiReadRadioInfo(void){
    uint8_t              spi_tx_buffer[3];
    uint8_t              spi_rx_buffer[3];
+
+   // prepare buffer to send over SPI
+   spi_tx_buffer[0]     =  (0x80 | 0x1E);        // [b7]    Read/Write:    1    (read)
+   // [b6]    RAM/Register : 1    (register)
+   // [b5-0]  address:       0x1E (Manufacturer ID, Lower 16 Bit)
+   spi_tx_buffer[1]     =  0x00;                 // send a SNOP strobe just to get the reg value
+   spi_tx_buffer[2]     =  0x00;                 // send a SNOP strobe just to get the reg value
+
+   // retrieve radio manufacturer ID over SPI
+   spi_txrx(spi_tx_buffer,
+         sizeof(spi_tx_buffer),
+         SPI_BUFFER,
+         spi_rx_buffer,
+         sizeof(spi_rx_buffer),
+         SPI_FIRST,
+         SPI_LAST);
+
+   return spi_rx_buffer[2];
+}
+
+void radio_spiWriteReg(uint8_t reg_addr, uint8_t reg_setting) {
+   uint8_t spi_tx_buffer[2];
+   uint8_t spi_rx_buffer[2];
    
-   spi_tx_buffer[0]     = (CC2420_FLAG_READ | CC2420_FLAG_REG | reg);
-   spi_tx_buffer[1]     = 0x00;
-   spi_tx_buffer[2]     = 0x00;
+   spi_tx_buffer[0] = (0xC0 | reg_addr);        // turn addess in a 'reg write' address
+   spi_tx_buffer[1] = reg_setting;
+   
+   spi_txrx(spi_tx_buffer,
+            sizeof(spi_tx_buffer),
+            SPI_BUFFER,
+            (uint8_t*)spi_rx_buffer,
+            sizeof(spi_rx_buffer),
+            SPI_FIRST,
+            SPI_LAST);
+}
+
+uint8_t radio_spiReadReg(uint8_t reg_addr) {
+   uint8_t spi_tx_buffer[2];
+   uint8_t spi_rx_buffer[2];
+   
+   spi_tx_buffer[0] = (0x80 | reg_addr);        // turn addess in a 'reg read' address
+   spi_tx_buffer[1] = 0x00;                     // send a no_operation command just to get the reg value
+   
+   spi_txrx(spi_tx_buffer,
+            sizeof(spi_tx_buffer),
+            SPI_BUFFER,
+            (uint8_t*)spi_rx_buffer,
+            sizeof(spi_rx_buffer),
+            SPI_FIRST,
+            SPI_LAST);
+   
+
+  return spi_rx_buffer[1];
+}
+
+/** for testing purposes, remove if not needed anymore**/
+
+void radio_spiWriteTxFifo(uint8_t* bufToWrite, uint8_t  lenToWrite) {
+   uint8_t spi_tx_buffer[2];
+   uint8_t spi_rx_buffer[1+1+127];               // 1B SPI address, 1B length, max. 127B data
+   
+   spi_tx_buffer[0] = 0x60;                      // SPI destination address for TXFIFO
+   spi_tx_buffer[1] = lenToWrite;                // length byte
    
    spi_txrx(spi_tx_buffer,
             sizeof(spi_tx_buffer),
@@ -322,51 +316,33 @@ void radio_spiReadReg(uint8_t reg, cc2420_status_t* statusRead, uint8_t* regValu
             spi_rx_buffer,
             sizeof(spi_rx_buffer),
             SPI_FIRST,
-            SPI_LAST);
-   
-   *statusRead          = *(cc2420_status_t*)&spi_rx_buffer[0];
-   *(regValueRead+0)    = spi_rx_buffer[2];
-   *(regValueRead+1)    = spi_rx_buffer[1];
-}
-
-void radio_spiWriteTxFifo(cc2420_status_t* statusRead, uint8_t* bufToWrite, uint8_t len) {
-   uint8_t              spi_tx_buffer[2];
-   
-   // step 1. send SPI address and length byte
-   spi_tx_buffer[0]     = (CC2420_FLAG_WRITE | CC2420_FLAG_REG | CC2420_TXFIFO_ADDR);
-   spi_tx_buffer[1]     = len;
-   
-   spi_txrx(spi_tx_buffer,
-            sizeof(spi_tx_buffer),
-            SPI_FIRSTBYTE,
-            (uint8_t*)statusRead,
-            1,
-            SPI_FIRST,
             SPI_NOTLAST);
    
-   // step 2. send payload
    spi_txrx(bufToWrite,
-            len,
-            SPI_LASTBYTE,
-            (uint8_t*)statusRead,
-            1,
+            lenToWrite,
+            SPI_BUFFER,
+            spi_rx_buffer,
+            sizeof(spi_rx_buffer),
             SPI_NOTFIRST,
             SPI_LAST);
 }
 
-void radio_spiReadRxFifo(cc2420_status_t* statusRead,
-                         uint8_t*         pBufRead,
-                         uint8_t*         pLenRead,
-                         uint8_t          maxBufLen) {
+
+
+void radio_spiReadRxFifo(uint8_t* pBufRead,
+                         uint8_t* pLenRead,
+                         uint8_t  maxBufLen,
+                         uint8_t* pLqi) {
    // when reading the packet over SPI from the RX buffer, you get the following:
    // - *[1B]     dummy byte because of SPI
    // - *[1B]     length byte
    // -  [0-125B] packet (excluding CRC)
    // - *[2B]     CRC
+   // - *[1B]     LQI
    uint8_t spi_tx_buffer[125];
    uint8_t spi_rx_buffer[3];
    
-   spi_tx_buffer[0]     = (CC2420_FLAG_READ | CC2420_FLAG_REG | CC2420_RXFIFO_ADDR);
+   spi_tx_buffer[0] = 0x20;
    
    // 2 first bytes
    spi_txrx(spi_tx_buffer,
@@ -377,8 +353,7 @@ void radio_spiReadRxFifo(cc2420_status_t* statusRead,
             SPI_FIRST,
             SPI_NOTLAST);
    
-   *statusRead          = *(cc2420_status_t*)&spi_rx_buffer[0];
-   *pLenRead            = spi_rx_buffer[1];
+   *pLenRead  = spi_rx_buffer[1];
    
    if (*pLenRead>2 && *pLenRead<=127) {
       // valid length
@@ -390,7 +365,18 @@ void radio_spiReadRxFifo(cc2420_status_t* statusRead,
                pBufRead,
                125,
                SPI_NOTFIRST,
+               SPI_NOTLAST);
+      
+      // CRC (2B) and LQI (1B)
+      spi_txrx(spi_tx_buffer,
+               2+1,
+               SPI_BUFFER,
+               spi_rx_buffer,
+               3,
+               SPI_NOTFIRST,
                SPI_LAST);
+      
+      *pLqi   = spi_rx_buffer[2];
       
    } else {
       // invalid length
@@ -407,3 +393,45 @@ void radio_spiReadRxFifo(cc2420_status_t* statusRead,
 }
 
 //=========================== callbacks =======================================
+
+//=========================== interrupt handlers ==============================
+
+kick_scheduler_t radio_isr() {
+   PORT_TIMER_WIDTH capturedTime;
+   uint8_t  irq_status;
+
+   // capture the time
+   capturedTime = radiotimer_getCapturedTime();
+
+   // reading IRQ_STATUS causes radio's IRQ pin to go low
+   irq_status = radio_spiReadReg(RG_IRQ_STATUS);
+    
+   // start of frame event
+   if (irq_status & AT_IRQ_RX_START) {
+      // change state
+      radio_vars.state = RADIOSTATE_RECEIVING;
+      if (radio_vars.startFrame_cb!=NULL) {
+         // call the callback
+         radio_vars.startFrame_cb(capturedTime);
+         // kick the OS
+         return KICK_SCHEDULER;
+      } else {
+         while(1);
+      }
+   }
+   // end of frame event
+   if (irq_status & AT_IRQ_TRX_END) {
+      // change state
+      radio_vars.state = RADIOSTATE_TXRX_DONE;
+      if (radio_vars.endFrame_cb!=NULL) {
+         // call the callback
+         radio_vars.endFrame_cb(capturedTime);
+         // kick the OS
+         return KICK_SCHEDULER;
+      } else {
+         while(1);
+      }
+   }
+   
+   return DO_NOT_KICK_SCHEDULER;
+}

@@ -9,7 +9,7 @@
 #include "schedule.h"
 #include "packetfunctions.h"
 #include "scheduler.h"
-#include "leds.h"
+#include "leds_ow.h"
 #include "neighbors.h"
 #include "debugpins.h"
 #include "res.h"
