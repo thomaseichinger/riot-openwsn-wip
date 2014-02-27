@@ -17,6 +17,9 @@ On openmoteSTM32, we use RTC for the radiotimer module.
 #include "rcc.h"
 #include "nvic.h"
 
+#define ENABLE_DEBUG (0)
+#include "debug.h"
+
 
 //=========================== variables =======================================
 
@@ -196,6 +199,7 @@ kick_scheduler_t radiotimer_isr() {
    uint8_t taiv_temp = radiotimer_vars.overflowORcompare;
    switch (taiv_temp) {
       case RADIOTIMER_COMPARE:
+          DEBUG("%s cmp\n", __PRETTY_FUNCTION__);
          if (radiotimer_vars.compare_cb!=NULL) {
             RCC_Wakeup();
             // call the callback
@@ -205,6 +209,7 @@ kick_scheduler_t radiotimer_isr() {
          }
          break;
       case RADIOTIMER_OVERFLOW: // timer overflows
+          DEBUG("%s of\n", __PRETTY_FUNCTION__);
          if (radiotimer_vars.overflow_cb!=NULL) {
            
             //Wait until last write operation on RTC registers has finished
@@ -216,11 +221,13 @@ kick_scheduler_t radiotimer_isr() {
             RCC_Wakeup();
             // call the callback
             radiotimer_vars.overflow_cb();
+            DEBUG("returned...");
             // kick the OS
             return KICK_SCHEDULER;
          }
          break;
       case RADIOTIMER_NONE:                     // this should not happen
+          DEBUG("%s none\n", __PRETTY_FUNCTION__);
       default:
          while(1);                               // this should not happen
    }

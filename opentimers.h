@@ -10,6 +10,7 @@
 #include "openwsn.h"
 
 #include "hwtimer_cpu.h"
+#include "periph_conf.h"
 
 /**
 \addtogroup drivers
@@ -31,7 +32,7 @@
 
 typedef void (*opentimers_cbt)(void);
 
-#define OPENTIMERS_HWTIMER_ID (ARCH_MAXTIMERS - 1)
+#define OPENTIMERS_HWTIMER_ID (1)
 
 //=========================== typedef =========================================
 

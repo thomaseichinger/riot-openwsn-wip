@@ -9,8 +9,10 @@
 #include "board_ow.h"
 #include "debugpins.h"
 #include "leds_ow.h"
+#include "hwtimer_arch.h"
+#include "thread.h"
 
-#define ENABLE_DEBUG (0)
+#define ENABLE_DEBUG (1)
 #include "debug.h"
 
 //=========================== variables =======================================
@@ -31,11 +33,12 @@ void scheduler_init() {
    
    // enable the scheduler's interrupt so SW can wake up the scheduler
    //SCHEDULER_ENABLE_INTERRUPT();
-   DEBUG(__PRETTY_FUNCTION__);
+
+   DEBUG("%s\n",__PRETTY_FUNCTION__);
 }
 
 void scheduler_start() {
-    DEBUG(__PRETTY_FUNCTION__);
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    taskList_item_t* pThisTask;
    while (1) {
       while(scheduler_vars.task_list!=NULL) {
@@ -56,19 +59,20 @@ void scheduler_start() {
          pThisTask->next          = NULL;
          scheduler_dbg.numTasksCur--;
       }
+      //DEBUG("no do...\n");
       //debugpins_task_clr();
       board_sleep();
       //debugpins_task_set();                      // IAR should halt here if nothing to do
    }
-   DEBUG("leaving... WTF?!");
+   DEBUG("leaving... WTF?!\n");
 }
 
  void scheduler_push_task(task_cbt cb, task_prio_t prio) {
-     DEBUG(__PRETTY_FUNCTION__);
+     DEBUG("%s\n",__PRETTY_FUNCTION__);
    taskList_item_t*  taskContainer;
    taskList_item_t** taskListWalker;
    INTERRUPT_DECLARATION();
-   
+
    DISABLE_INTERRUPTS();
    
    // find an empty task container

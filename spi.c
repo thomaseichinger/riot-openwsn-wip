@@ -15,6 +15,9 @@
 #include "rcc.h"
 #include "nvic.h"
 
+#define ENABLE_DEBUG (0)
+#include "debug.h"
+
 //=========================== defines =========================================
 
 //=========================== variables =======================================
@@ -106,7 +109,7 @@ void spi_init() {
 #ifdef SPI_IN_INTERRUPT_MODE
   //Configure NVIC: Preemption Priority = 1 and Sub Priority = 1
   NVIC_InitTypeDef NVIC_InitStructure;
-  NVIC_InitStructure.NVIC_IRQChannel	                  = SPI1_IRQChannel;
+  NVIC_InitStructure.NVIC_IRQChannel	                  = SPI1_IRQn;
   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority	= 1;
   NVIC_InitStructure.NVIC_IRQChannelSubPriority	        = 1;
   NVIC_InitStructure.NVIC_IRQChannelCmd	                = ENABLE;
@@ -168,7 +171,12 @@ void spi_txrx(uint8_t*     bufTx,
    SPI_I2S_SendData(SPI1,*spi_vars.pNextTxByte);
 
       // busy wait on the interrupt flag
-      while (SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) == RESET);
+      uint16_t c = 0;
+      while (SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) == RESET) 
+          if (c++ == 1000) {
+              //DEBUG("spi_txrx timeout\n");
+              break;
+          }
       
       // clear the interrupt flag
       SPI_I2S_ClearFlag(SPI1, SPI_I2S_FLAG_RXNE);

@@ -9,12 +9,13 @@ at most MAX_NUM_TIMERS timers.
 
 #include "openwsn.h"
 #include "opentimers.h"
-//#include "bsp_timer.h"
+// #include "bsp_timer.h"
 #include "board_ow.h"
 #include "leds_ow.h"
 
-#include "hwtimer_arch.h"
 #include "hwtimer_cpu.h"
+#include "hwtimer_arch.h"
+// #include "hwtimer.h"
 
 //=========================== define ==========================================
 
@@ -22,6 +23,7 @@ at most MAX_NUM_TIMERS timers.
 
 opentimers_vars_t opentimers_vars;
 //uint32_t counter; //counts the elapsed time.
+uint32_t timer_id;
 
 //=========================== prototypes ======================================
 
@@ -51,7 +53,9 @@ void opentimers_init(void){
 
    // set callback for bsp_timers module
    // bsp_timer_set_callback(opentimers_timer_callback);
+   // hwtimer_arch_enable_interrupt();
    hwtimer_arch_init(opentimers_int_handler, F_CPU); 
+   // hwtimer_init();
 }
 
 /** 
@@ -89,6 +93,7 @@ The timer works as follows:
 opentimer_id_t opentimers_start(uint32_t duration, timer_type_t type, time_type_t timetype, opentimers_cbt callback) {
 
    uint8_t  id;
+   // puts("timer set");
 
    // find an unused timer
    for (id=0; id<MAX_NUM_TIMERS && opentimers_vars.timersBuf[id].isrunning==TRUE; id++);
@@ -137,11 +142,14 @@ opentimer_id_t opentimers_start(uint32_t duration, timer_type_t type, time_type_
       ) {  
          opentimers_vars.currentTimeout            = opentimers_vars.timersBuf[id].ticks_remaining;
          if (opentimers_vars.running==FALSE) {
-            //bsp_timer_reset();
+            // bsp_timer_reset();
             hwtimer_arch_unset(OPENTIMERS_HWTIMER_ID); 
+             // hwtimer_remove(timer_id);
          }
          // bsp_timer_scheduleIn(opentimers_vars.timersBuf[id].ticks_remaining);
          hwtimer_arch_set(opentimers_vars.timersBuf[id].ticks_remaining, OPENTIMERS_HWTIMER_ID);
+         // hwtimer_arch_enable_interrupt();
+         // timer_id = hwtimer_set(opentimers_vars.timersBuf[id].ticks_remaining, opentimers_timer_callback, NULL);
       }
 
       opentimers_vars.running                         = TRUE;
@@ -215,7 +223,6 @@ corresponding callback(s), and restarts the hardware timer with the next timer
 to expire.
  */
 void opentimers_timer_callback(void) {
-   
    opentimer_id_t   id;
    PORT_TIMER_WIDTH min_timeout;
    bool             found;
@@ -294,6 +301,7 @@ void opentimers_timer_callback(void) {
       opentimers_vars.currentTimeout = min_timeout;
       // bsp_timer_scheduleIn(opentimers_vars.currentTimeout);
       hwtimer_arch_set(opentimers_vars.currentTimeout, OPENTIMERS_HWTIMER_ID);
+      // timer_id = hwtimer_set(opentimers_vars.currentTimeout, opentimers_timer_callback, NULL);
    } else {
       // no more timers pending
       opentimers_vars.running = FALSE;
@@ -376,6 +384,7 @@ void opentimers_sleepTimeCompesation(uint16_t sleepTime)
       opentimers_vars.currentTimeout = min_timeout;
       // bsp_timer_scheduleIn(opentimers_vars.currentTimeout);
       hwtimer_arch_set(opentimers_vars.currentTimeout, OPENTIMERS_HWTIMER_ID);
+      // timer_id = hwtimer_set(opentimers_vars.currentTimeout, opentimers_timer_callback, NULL);
    } else {
       // no more timers pending
       opentimers_vars.running = FALSE;

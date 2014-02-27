@@ -9,7 +9,7 @@
 #include "leds_ow.h"
 #include "uart_ow.h"
 #include "spi.h"
-//#include "bsp_timer.h"
+// #include "bsp_timer.h"
 #include "radio.h"
 #include "radiotimer.h"
 #include "rcc.h"
@@ -81,7 +81,8 @@ void board_init_ow()
   leds_init_ow();
   uart_init_ow();
   spi_init();
-  //bsp_timer_init();
+  // bsp_timer_init();
+  
   radio_init();
   radiotimer_init();
   debugpins_init();

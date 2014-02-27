@@ -41,7 +41,7 @@ void NVIC_spi(void)
 #ifdef SPI_IN_INTERRUPT_MODE
   //Configure NVIC: Preemption Priority = 1 and Sub Priority = 1
   NVIC_InitTypeDef NVIC_InitStructure;
-  NVIC_InitStructure.NVIC_IRQChannel	                   = SPI1_IRQChannel;
+  NVIC_InitStructure.NVIC_IRQChannel	                   = SPI1_IRQn;
   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority   = 1;
   NVIC_InitStructure.NVIC_IRQChannelSubPriority	         = 1;
   NVIC_InitStructure.NVIC_IRQChannelCmd	                 = ENABLE;

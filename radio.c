@@ -13,6 +13,10 @@
 #include "debugpins.h"
 #include "leds_ow.h"
 
+#define ENABLE_DEBUG (0)
+#include "debug.h"
+
+
 //=========================== defines =========================================
 
 //=========================== variables =======================================
@@ -58,8 +62,12 @@ void radio_init() {
 #define RG_TRX_CTRL_1 0x04
    radio_spiWriteReg(RG_TRX_CTRL_1, 0x20);                // have the radio calculate CRC
    //busy wait until radio status is TRX_OFF
-  
-   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF);
+   uint16_t c = 0;
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF)
+       if (c++ == 1000) {
+           DEBUG("radio_spiReadReg timeout\n");
+           break;
+       }
    
    // change state
    radio_vars.state          = RADIOSTATE_RFOFF;
@@ -123,13 +131,24 @@ void radio_rfOn() {
 }
 
 void radio_rfOff() {
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    // change state
    radio_vars.state = RADIOSTATE_TURNING_OFF;
    radio_spiReadReg(RG_TRX_STATUS);
+   DEBUG("step 1\n");
    // turn radio off
    radio_spiWriteReg(RG_TRX_STATE, CMD_FORCE_TRX_OFF);
-   //radio_spiWriteReg(RG_TRX_STATE, CMD_TRX_OFF);
-   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF); // busy wait until done
+   DEBUG("step 2\n");
+   radio_spiWriteReg(RG_TRX_STATE, CMD_TRX_OFF);
+   
+   // busy wait until done
+   uint16_t c = 0;
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF) 
+       if (c++ == 1000) {
+           DEBUG("%s: radio_spiReadReg timeout\n", __PRETTY_FUNCTION__);
+           break;
+       }
+        
    
    // wiggle debug pin
    debugpins_radio_clr();
@@ -162,7 +181,12 @@ void radio_txEnable() {
    
    // turn on radio's PLL
    radio_spiWriteReg(RG_TRX_STATE, CMD_PLL_ON);
-   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != PLL_ON); // busy wait until done
+   uint16_t c = 0;
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != PLL_ON) // busy wait until done
+       if (c++ == 1000) {
+           DEBUG("%s: radio_spiReadReg timeout\n", __PRETTY_FUNCTION__);
+           break;
+       }
    
    // change state
    radio_vars.state = RADIOSTATE_TX_ENABLED;
@@ -205,7 +229,12 @@ void radio_rxEnable() {
    leds_radio_on();
    
    // busy wait until radio really listening
-   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != RX_ON);
+   uint16_t c = 0;
+   while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != RX_ON)
+       if (c++ == 1000) {
+           DEBUG("%s: radio_spiReadReg timeout\n",__PRETTY_FUNCTION__);
+           break;
+       }
    
    // change state
    radio_vars.state = RADIOSTATE_LISTENING;
@@ -297,7 +326,7 @@ uint8_t radio_spiReadReg(uint8_t reg_addr) {
             SPI_FIRST,
             SPI_LAST);
    
-
+  
   return spi_rx_buffer[1];
 }
 

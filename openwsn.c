@@ -64,7 +64,7 @@
 //#include "heli.h"
 //#include "imu.h"
 
-#define ENABLE_DEBUG (0)
+#define ENABLE_DEBUG (1)
 #include "debug.h"
 
 //=========================== variables =======================================
@@ -79,14 +79,14 @@ void openwsn_start(void);
 //=========================== public ==========================================
 
 void openwsn_start_thread(void) {
-    DEBUG(__PRETTY_FUNCTION__);
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
     thread_create(openwsn_stack, KERNEL_CONF_STACKSIZE_MAIN, 
                    PRIORITY_OPENWSN, CREATE_STACKTEST, 
                    openwsn_start, "openwsn thread");
 }
 
 void openwsn_start(void) {
-    DEBUG(__PRETTY_FUNCTION__);
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
     //board_init_ow();
     scheduler_init();
     openwsn_init();
@@ -97,7 +97,7 @@ void openwsn_start(void) {
 //=========================== private =========================================
 
 void openwsn_init(void) {
-    DEBUG(__PRETTY_FUNCTION__);
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    //===== drivers
    openserial_init();
    
@@ -111,8 +111,11 @@ void openwsn_init(void) {
    ieee154e_init();
    //-- 02b-RES
    schedule_init();
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    res_init();
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    neighbors_init();
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    //-- 03a-IPHC
    openbridge_init();
    iphc_init();

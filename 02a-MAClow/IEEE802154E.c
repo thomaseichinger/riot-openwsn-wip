@@ -104,7 +104,7 @@ Call this function once before any other function in this module, possibly
 during boot-up.
 */
 void ieee154e_init(void) {
-    DEBUG(__PRETTY_FUNCTION__);
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    // initialize variables
    memset(&ieee154e_vars,0,sizeof(ieee154e_vars_t));
    memset(&ieee154e_dbg,0,sizeof(ieee154e_dbg_t));
@@ -171,17 +171,26 @@ PORT_RADIOTIMER_WIDTH ieee154e_asnDiff(asn_t* someASN) {
 This function executes in ISR mode, when the new slot timer fires.
 */
 void isr_ieee154e_newSlot(void) {
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    radio_setTimerPeriod(TsSlotDuration);
+   DEBUG("step 1\n");
    if (ieee154e_vars.isSync==FALSE) {
+       DEBUG("step 2.1\n");
       if (idmanager_getIsDAGroot()==TRUE) {
+          DEBUG("step 2.1.1\n");
          changeIsSync(TRUE);
       } else {
+          DEBUG("step 2.1.2\n");
          activity_synchronize_newSlot();
+         DEBUG("step 2.1.3\n");
       }
    } else {
+       DEBUG("step 2.2.1\n");
       activity_ti1ORri1();
+       DEBUG("step 2.2.2\n");
    }
    ieee154e_dbg.num_newSlot++;
+   DEBUG("end.\n");
 }
 
 /**
@@ -404,36 +413,41 @@ bool debugPrint_macStats(void) {
 //======= SYNCHRONIZING
 
 port_INLINE void activity_synchronize_newSlot(void) {
+    DEBUG("%s\n",__PRETTY_FUNCTION__);
    // I'm in the middle of receiving a packet
    if (ieee154e_vars.state==S_SYNCRX) {
       return;
    }
+   DEBUG("step 1\n");
    
    // if this is the first time I call this function while not synchronized,
    // switch on the radio in Rx mode
    if (ieee154e_vars.state!=S_SYNCLISTEN) {
+      DEBUG("step 2.1\n");
       // change state
       changeState(S_SYNCLISTEN);
-      
+      DEBUG("step 2.x\n");
       // turn off the radio (in case it wasn't yet)
       radio_rfOff();
-      
+      DEBUG("step 2.2\n");
       // configure the radio to listen to the default synchronizing channel
       radio_setFrequency(SYNCHRONIZING_CHANNEL);
-      
+      DEBUG("step 2.3\n");
       // update record of current channel
       ieee154e_vars.freq = SYNCHRONIZING_CHANNEL;
       
       // switch on the radio in Rx mode.
       radio_rxEnable();
+      DEBUG("step 2.4\n");
       ieee154e_vars.radioOnInit=radio_getTimerValue();
       ieee154e_vars.radioOnThisSlot=TRUE;
       radio_rxNow();
+      DEBUG("step 2.5\n");
    }
    
    // increment ASN (used only to schedule serial activity)
    incrementAsnOffset();
-   
+   DEBUG("step 3\n");
    // to be able to receive and transmist serial even when not synchronized
    // take turns every 8 slots sending and receiving
    if        ((ieee154e_vars.asn.bytes0and1&0x000f)==0x0000) {
