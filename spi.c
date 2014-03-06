@@ -173,10 +173,10 @@ void spi_txrx(uint8_t*     bufTx,
       // busy wait on the interrupt flag
       uint16_t c = 0;
       while (SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) == RESET) 
-          if (c++ == 1000) {
-              //DEBUG("spi_txrx timeout\n");
-              break;
-          }
+          ;// if (c++ == 10000) {
+//               //DEBUG("spi_txrx timeout\n");
+//               break;
+//           }
       
       // clear the interrupt flag
       SPI_I2S_ClearFlag(SPI1, SPI_I2S_FLAG_RXNE);

@@ -39,6 +39,7 @@ void udprand_init(void) {
 }
 
 void udprand_task(void){
+    puts(__PRETTY_FUNCTION__);
     OpenQueueEntry_t* pkt;
    
    // don't run if not synch

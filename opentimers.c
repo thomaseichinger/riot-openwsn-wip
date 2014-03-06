@@ -53,7 +53,7 @@ void opentimers_init(void){
 
    // set callback for bsp_timers module
    // bsp_timer_set_callback(opentimers_timer_callback);
-   // hwtimer_arch_enable_interrupt();
+   hwtimer_arch_enable_interrupt();
    hwtimer_arch_init(opentimers_int_handler, F_CPU); 
    // hwtimer_init();
 }

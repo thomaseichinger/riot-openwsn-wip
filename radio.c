@@ -64,10 +64,10 @@ void radio_init() {
    //busy wait until radio status is TRX_OFF
    uint16_t c = 0;
    while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF)
-       if (c++ == 1000) {
-           DEBUG("radio_spiReadReg timeout\n");
-           break;
-       }
+       ;// if (c++ == 10000) {
+//            DEBUG("radio_spiReadReg timeout\n");
+//            break;
+//        }
    
    // change state
    radio_vars.state          = RADIOSTATE_RFOFF;
@@ -144,18 +144,19 @@ void radio_rfOff() {
    // busy wait until done
    uint16_t c = 0;
    while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != TRX_OFF) 
-       if (c++ == 1000) {
-           DEBUG("%s: radio_spiReadReg timeout\n", __PRETTY_FUNCTION__);
-           break;
-       }
+       ;// if (c++ == 100000) {
+//            DEBUG("%s: radio_spiReadReg timeout\n", __PRETTY_FUNCTION__);
+//            break;
+//        }
         
-   
+   DEBUG("step 3\n");
    // wiggle debug pin
    debugpins_radio_clr();
    leds_radio_off();
-   
+   DEBUG("step 4\n");
    // change state
    radio_vars.state = RADIOSTATE_RFOFF;
+   DEBUG("step 5\n");
 }
 
 //===== TX
@@ -183,10 +184,10 @@ void radio_txEnable() {
    radio_spiWriteReg(RG_TRX_STATE, CMD_PLL_ON);
    uint16_t c = 0;
    while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != PLL_ON) // busy wait until done
-       if (c++ == 1000) {
-           DEBUG("%s: radio_spiReadReg timeout\n", __PRETTY_FUNCTION__);
-           break;
-       }
+       ;// if (c++ == 100000) {
+//            DEBUG("%s: radio_spiReadReg timeout\n", __PRETTY_FUNCTION__);
+//            break;
+//        }
    
    // change state
    radio_vars.state = RADIOSTATE_TX_ENABLED;
@@ -196,7 +197,7 @@ void radio_txNow() {
    PORT_TIMER_WIDTH val;
    // change state
    radio_vars.state = RADIOSTATE_TRANSMITTING;
-   
+   leds_radio_toggle();
    // send packet by pulsing the SLP_TR_CNTL pin
    PORT_PIN_RADIO_SLP_TR_CNTL_HIGH();
    PORT_PIN_RADIO_SLP_TR_CNTL_LOW();
@@ -213,6 +214,7 @@ void radio_txNow() {
       val=radiotimer_getCapturedTime();
       radio_vars.startFrame_cb(val);
    }
+   DEBUG("SENT");
 }
 
 //===== RX
@@ -231,10 +233,10 @@ void radio_rxEnable() {
    // busy wait until radio really listening
    uint16_t c = 0;
    while((radio_spiReadReg(RG_TRX_STATUS) & 0x1F) != RX_ON)
-       if (c++ == 1000) {
-           DEBUG("%s: radio_spiReadReg timeout\n",__PRETTY_FUNCTION__);
-           break;
-       }
+       ;// if (c++ == 100000) {
+//            DEBUG("%s: radio_spiReadReg timeout\n",__PRETTY_FUNCTION__);
+//            break;
+//        }
    
    // change state
    radio_vars.state = RADIOSTATE_LISTENING;
@@ -251,7 +253,7 @@ void radio_getReceivedFrame(uint8_t* pBufRead,
                             uint8_t* pLqi,
                             uint8_t* pCrc) {
    uint8_t temp_reg_value;
-   
+
    //===== crc
    temp_reg_value  = radio_spiReadReg(RG_PHY_RSSI);
    *pCrc           = (temp_reg_value & 0x80)>>7;  // msb is whether packet passed CRC
@@ -437,6 +439,7 @@ kick_scheduler_t radio_isr() {
     
    // start of frame event
    if (irq_status & AT_IRQ_RX_START) {
+       DEBUG("Start of frame.\n");
       // change state
       radio_vars.state = RADIOSTATE_RECEIVING;
       if (radio_vars.startFrame_cb!=NULL) {
@@ -450,6 +453,7 @@ kick_scheduler_t radio_isr() {
    }
    // end of frame event
    if (irq_status & AT_IRQ_TRX_END) {
+       DEBUG("End of Frame.\n");
       // change state
       radio_vars.state = RADIOSTATE_TXRX_DONE;
       if (radio_vars.endFrame_cb!=NULL) {

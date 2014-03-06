@@ -12,7 +12,7 @@
 #include "hwtimer_arch.h"
 #include "thread.h"
 
-#define ENABLE_DEBUG (1)
+#define ENABLE_DEBUG (0)
 #include "debug.h"
 
 //=========================== variables =======================================
@@ -61,8 +61,9 @@ void scheduler_start() {
       }
       //DEBUG("no do...\n");
       //debugpins_task_clr();
-      board_sleep();
+      // board_sleep();
       //debugpins_task_set();                      // IAR should halt here if nothing to do
+      thread_yield();
    }
    DEBUG("leaving... WTF?!\n");
 }

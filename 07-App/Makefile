@@ -17,6 +17,7 @@ INCLUDES += -I$(CURDIR)/07-App/tcpprint
 INCLUDES += -I$(CURDIR)/cross-layers
 
 DIRS += rinfo
+DIRS += r6tus
 DIRS += rwellknown
 DIRS += ohlone
 DIRS += tcpecho

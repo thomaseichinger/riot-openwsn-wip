@@ -157,7 +157,7 @@ PORT_RADIOTIMER_WIDTH ieee154e_asnDiff(asn_t* someASN) {
       diff += 0xffff-someASN->bytes0and1;
       diff += 1;
    } else {
-      diff = (PORT_RADIOTIMER_WIDTH)0xFFFFFFFF;;
+      diff = (PORT_RADIOTIMER_WIDTH)0xFFFFFFFF;
    }
    ENABLE_INTERRUPTS();
    return diff;

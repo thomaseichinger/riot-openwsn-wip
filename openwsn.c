@@ -8,6 +8,7 @@
 #include "scheduler.h"
 #include "thread.h"
 #include "board_ow.h"
+#include "leds_ow.h"
 //===== drivers
 #include "openserial.h"
 //===== stack
@@ -87,7 +88,8 @@ void openwsn_start_thread(void) {
 
 void openwsn_start(void) {
     DEBUG("%s\n",__PRETTY_FUNCTION__);
-    //board_init_ow();
+    leds_all_off();
+    board_init_ow();
     scheduler_init();
     openwsn_init();
     puts("OpenWSN thread started.");
@@ -98,8 +100,9 @@ void openwsn_start(void) {
 
 void openwsn_init(void) {
     DEBUG("%s\n",__PRETTY_FUNCTION__);
+
    //===== drivers
-   openserial_init();
+   //openserial_init();
    
    //===== stack
    //-- cross-layer
@@ -111,11 +114,8 @@ void openwsn_init(void) {
    ieee154e_init();
    //-- 02b-RES
    schedule_init();
-    DEBUG("%s\n",__PRETTY_FUNCTION__);
    res_init();
-    DEBUG("%s\n",__PRETTY_FUNCTION__);
    neighbors_init();
-    DEBUG("%s\n",__PRETTY_FUNCTION__);
    //-- 03a-IPHC
    openbridge_init();
    iphc_init();
@@ -135,10 +135,10 @@ void openwsn_init(void) {
    
    //===== applications
    //-- TCP
-   //tcpecho_init();
-   //tcpinject_init();
-   //tcpprint_init();
-   //ohlone_init();
+   tcpecho_init();
+   tcpinject_init();
+   tcpprint_init();
+   ohlone_init();
    //-- UDP
    udpecho_init();
    udpinject_init();
@@ -154,7 +154,7 @@ void openwsn_init(void) {
    //rrube_init();
    //rxl1_init();
    //layerdebug_init();
-   //r6tus_init();
+   r6tus_init();
    //-- misc
    //heli_init();
    //imu_init();
@@ -162,4 +162,5 @@ void openwsn_init(void) {
    openserial_printInfo(COMPONENT_OPENWSN,ERR_BOOTED,
                             (errorparameter_t)0,
                             (errorparameter_t)0);
+    // leds_all_off();
 }

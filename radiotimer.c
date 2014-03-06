@@ -216,12 +216,12 @@ kick_scheduler_t radiotimer_isr() {
             RTC_WaitForLastTask();                            
             
             //Set the RTC time counter to 0
-            RTC_SetCounter(0x00000000);
+            RTC_SetCounter(0xffffffff);
             RTC_WaitForLastTask();
             RCC_Wakeup();
             // call the callback
             radiotimer_vars.overflow_cb();
-            DEBUG("returned...");
+            DEBUG("returned...\n");
             // kick the OS
             return KICK_SCHEDULER;
          }

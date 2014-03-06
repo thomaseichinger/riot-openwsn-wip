@@ -5,7 +5,7 @@
 #include "radiotimer.h"
 #include "spi.h"
 #include "radio.h"
-#include "rtc_timer.h"
+// #include "rtc_timer.h"
 // #include "uart.h"
 // #include "debugpins.h"
 #include "rcc.h"
@@ -31,9 +31,7 @@ void rtcalarm_handler(void)
   if(EXTI_GetITStatus(EXTI_Line17) != RESET)
   {
 	EXTI_ClearITPendingBit(EXTI_Line17);
-    DEBUG("%s 2\n",__PRETTY_FUNCTION__);
     radiotimer_isr();
-    DEBUG("%s 3\n",__PRETTY_FUNCTION__);
   }
   // debugpins_isr_clr();
 }

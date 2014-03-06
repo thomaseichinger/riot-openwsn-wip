@@ -32,20 +32,21 @@
 
 void board_init_ow()
 {
+
   RCC_Configuration();//Configure rcc
   NVIC_Configuration();//configure NVIC and Vector Table
-  
+
   //configure ALL GPIO to AIN to get lowest power
-  GPIO_Config_ALL_AIN();
+  // GPIO_Config_ALL_AIN();
   //configuration GPIO to measure the time from sleep to 72MHz
-  GPIO_Configuration();
- 
+  // GPIO_Configuration();
+  
   GPIO_InitTypeDef  GPIO_InitStructure;
 
   //enable GPIOC and GPIOA, Clock
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC , ENABLE);
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA , ENABLE);
-  
+
   //Configure PA.02 as SLP_TR pin of RF
   GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_2;
   GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
@@ -57,7 +58,7 @@ void board_init_ow()
   GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_Init(GPIOC, &GPIO_InitStructure);
-  
+
   //set /RST pin high(never reset)
   GPIO_SetBits(GPIOC, GPIO_Pin_1);
   
@@ -76,13 +77,13 @@ void board_init_ow()
   EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
   EXTI_InitStructure.EXTI_LineCmd = ENABLE; 
   EXTI_Init(&EXTI_InitStructure);
-  
+
   // initialize board
-  leds_init_ow();
-  uart_init_ow();
+  // leds_init_ow();
+//   uart_init_ow();
   spi_init();
   // bsp_timer_init();
-  
+
   radio_init();
   radiotimer_init();
   debugpins_init();
