@@ -531,7 +531,7 @@ port_INLINE void activity_synchronize_endOfFrame(PORT_RADIOTIMER_WIDTH capturedT
                              sizeof(ieee154e_vars.dataReceived->packet),
                                    &ieee154e_vars.dataReceived->l1_rssi,
                                    &ieee154e_vars.dataReceived->l1_lqi,
-                                   &ieee154e_vars.dataReceived->l1_crc);
+                                   (uint8_t*)(&ieee154e_vars.dataReceived->l1_crc));
       
       // break if packet too short
       if (ieee154e_vars.dataReceived->length<LENGTH_CRC || ieee154e_vars.dataReceived->length>LENGTH_IEEE154_MAX) {
@@ -1140,7 +1140,7 @@ port_INLINE void activity_tie6(void) {
 
 port_INLINE void activity_ti9(PORT_RADIOTIMER_WIDTH capturedTime) {
    ieee802154_header_iht ieee802514_header;
-   volatile PORT_SIGNED_INT_WIDTH  timeCorrection;
+   //volatile PORT_SIGNED_INT_WIDTH  timeCorrection;
    uint16_t lenIE;
    
    // change state
@@ -1191,7 +1191,7 @@ port_INLINE void activity_ti9(PORT_RADIOTIMER_WIDTH capturedTime) {
                              sizeof(ieee154e_vars.ackReceived->packet),
                                    &ieee154e_vars.ackReceived->l1_rssi,
                                    &ieee154e_vars.ackReceived->l1_lqi,
-                                   &ieee154e_vars.ackReceived->l1_crc);
+                                   (uint8_t*)&ieee154e_vars.ackReceived->l1_crc);
       
       // break if wrong length
       if (ieee154e_vars.ackReceived->length<LENGTH_CRC || ieee154e_vars.ackReceived->length>LENGTH_IEEE154_MAX) {
@@ -1393,7 +1393,7 @@ port_INLINE void activity_ri5(PORT_RADIOTIMER_WIDTH capturedTime) {
                              sizeof(ieee154e_vars.dataReceived->packet),
                                    &ieee154e_vars.dataReceived->l1_rssi,
                                    &ieee154e_vars.dataReceived->l1_lqi,
-                                   &ieee154e_vars.dataReceived->l1_crc);
+                                   (uint8_t*)&ieee154e_vars.dataReceived->l1_crc);
       
       // break if wrong length
       if (ieee154e_vars.dataReceived->length<LENGTH_CRC || ieee154e_vars.dataReceived->length>LENGTH_IEEE154_MAX ) {

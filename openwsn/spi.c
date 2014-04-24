@@ -53,7 +53,7 @@ inline static void SLEEP_CLR(void) { GPIOA->BRR = 1<<2; }
 
 void spi_init() {
  // clear variables
-  memset(&spi_vars,0,sizeof(spi_vars_t));
+  memset((void*)&spi_vars,0,sizeof(spi_vars_t));
  
   SPI_InitTypeDef  SPI_InitStructure;
 
@@ -171,12 +171,7 @@ void spi_txrx(uint8_t*     bufTx,
    SPI_I2S_SendData(SPI1,*spi_vars.pNextTxByte);
 
       // busy wait on the interrupt flag
-      uint16_t c = 0;
-      while (SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) == RESET) 
-          ;// if (c++ == 10000) {
-//               //DEBUG("spi_txrx timeout\n");
-//               break;
-//           }
+      while (SPI_I2S_GetFlagStatus(SPI1,SPI_I2S_FLAG_RXNE) == RESET);
       
       // clear the interrupt flag
       SPI_I2S_ClearFlag(SPI1, SPI_I2S_FLAG_RXNE);

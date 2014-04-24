@@ -46,7 +46,7 @@ volatile radiotimer_vars_t radiotimer_vars;
 
 void radiotimer_init() {
    // clear local variables
-   memset(&radiotimer_vars,0,sizeof(radiotimer_vars_t));
+   memset((void*)&radiotimer_vars,0,sizeof(radiotimer_vars_t));
 }
 
 void radiotimer_setOverflowCb(radiotimer_compare_cbt cb) {

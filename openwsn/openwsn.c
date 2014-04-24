@@ -60,7 +60,7 @@
 //#include "rrube.h"
 //#include "rxl1.h"
 //#include "layerdebug.h"
-//#include "r6tus.h"
+//#include "r6t.h"
 //-- misc
 //#include "heli.h"
 //#include "imu.h"
@@ -135,9 +135,9 @@ void openwsn_init(void) {
    
    //===== applications
    //-- TCP
-   tcpecho_init();
-   tcpinject_init();
-   tcpprint_init();
+   // tcpecho_init();
+   // tcpinject_init();
+   // tcpprint_init();
    ohlone_init();
    //-- UDP
    udpecho_init();
@@ -154,7 +154,7 @@ void openwsn_init(void) {
    //rrube_init();
    //rxl1_init();
    //layerdebug_init();
-   r6tus_init();
+   //r6t_init();
    //-- misc
    //heli_init();
    //imu_init();
